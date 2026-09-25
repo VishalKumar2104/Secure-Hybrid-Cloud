@@ -1,0 +1,54 @@
+name: SERNMS Backend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    name: Build, Verify and Test Spring Boot Core
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 LTS (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compile and Run Unit/Integration Tests
+        working-directory: sernms-backend
+        run: mvn clean test --batch-mode
+
+      - name: Package Production JAR Artifact
+        working-directory: sernms-backend
+        run: mvn package -DskipTests --batch-mode
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sernms-core-jar
+          path: sernms-backend/target/sernms-backend-1.0.0.jar
+          retention-days: 7
+
+  docker-build-verification:
+    name: Docker Container Build Verification
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        run: |
+          docker build -t sernms-app:latest -f docker/Dockerfile sernms-backend

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # MySQL 8.0 Relational Database Container
+  mysql:
+    image: mysql:8.0
+    container_name: sernms-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-RootSecurePass2026!}
+      MYSQL_DATABASE: ${DB_NAME:-sernms_db}
+      MYSQL_USER: ${DB_USERNAME:-sernms_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-SecureDbPass123!}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-RootSecurePass2026!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sernms-network
+
+  # SERNMS Full-Stack Spring Boot Application Container
+  sernms-backend:
+    build:
+      context: ../sernms-backend
+      dockerfile: ../docker/Dockerfile
+    container_name: sernms-app
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-sernms_db}
+      DB_USERNAME: ${DB_USERNAME:-sernms_user}
+      DB_PASSWORD: ${DB_PASSWORD:-SecureDbPass123!}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      AWS_MODE: ${AWS_MODE:-simulated}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    ports:
+      - "${PORT:-8080}:8080"
+    networks:
+      - sernms-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  sernms-network:
+    driver: bridge

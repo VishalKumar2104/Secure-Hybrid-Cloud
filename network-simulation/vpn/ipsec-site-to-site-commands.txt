@@ -1,0 +1,100 @@
+================================================================================
+SERNMS HYBRID CLOUD: CISCO IOS TO AWS SITE-TO-SITE IPSEC VPN CONFIGURATION
+================================================================================
+
+This document details the exact configuration commands to establish an
+authenticated, encrypted IPSec tunnel between an on-premise Cisco router
+(Cisco 2911 / ISR 4331) and an AWS Virtual Private Gateway (VGW).
+
+Prerequisites:
+- Enterprise Public IP: 203.0.113.1
+- AWS Virtual Private Gateway Public IP: 54.210.88.192
+- Campus Network CIDR: 10.10.0.0/16
+- AWS VPC CIDR: 10.0.0.0/16
+- Pre-Shared Key (PSK): EnterpriseAwsVpnKey2026!
+
+--------------------------------------------------------------------------------
+STEP 1: Phase 1 Configuration (IKEv2 Proposal & Policy)
+--------------------------------------------------------------------------------
+configure terminal
+
+crypto ikev2 proposal AWS-IKEV2-PROPOSAL
+ encryption aes-cbc-256
+ integrity sha256
+ group 14
+exit
+
+crypto ikev2 policy AWS-IKEV2-POLICY
+ proposal AWS-IKEV2-PROPOSAL
+exit
+
+crypto ikev2 keyring AWS-KEYRING
+ peer AWS-VGW
+  address 54.210.88.192
+  pre-shared-key EnterpriseAwsVpnKey2026!
+ exit
+exit
+
+crypto ikev2 profile AWS-IKEV2-PROFILE
+ match identity remote address 54.210.88.192 255.255.255.255
+ identity local address 203.0.113.1
+ authentication remote pre-share
+ authentication local pre-share
+ keyring local AWS-KEYRING
+ lifetime 28800
+exit
+
+--------------------------------------------------------------------------------
+STEP 2: Phase 2 Configuration (IPSec Transform-Set & Profile)
+--------------------------------------------------------------------------------
+crypto ipsec transform-set AWS-TRANSFORM-SET esp-aes 256 esp-sha256-hmac
+ mode tunnel
+exit
+
+crypto ipsec profile AWS-IPSEC-PROFILE
+ set transform-set AWS-TRANSFORM-SET
+ set ikev2-profile AWS-IKEV2-PROFILE
+ set security-association lifetime seconds 3600
+exit
+
+--------------------------------------------------------------------------------
+STEP 3: Tunnel Interface Configuration
+--------------------------------------------------------------------------------
+interface Tunnel0
+ description Encrypted IPSec Tunnel to AWS VPC (10.0.0.0/16)
+ ip address 169.254.10.2 255.255.255.252
+ ip tcp adjust-mss 1379
+ tunnel source GigabitEthernet0/0
+ tunnel destination 54.210.88.192
+ tunnel mode ipsec ipv4
+ tunnel protection ipsec profile AWS-IPSEC-PROFILE
+ no shutdown
+exit
+
+--------------------------------------------------------------------------------
+STEP 4: Routing & NAT Bypassing
+--------------------------------------------------------------------------------
+! Route all AWS VPC destination traffic over the secure tunnel
+ip route 10.0.0.0 255.255.0.0 Tunnel0
+
+! Ensure campus-to-AWS traffic is NEVER NATted
+ip access-list extended NO-NAT-ACL
+ deny ip 10.10.0.0 0.0.255.255 10.0.0.0 0.0.255.255
+ permit ip 10.10.0.0 0.0.255.255 any
+exit
+
+--------------------------------------------------------------------------------
+STEP 5: Verification Commands (Useful for Exam / Viva Defense)
+--------------------------------------------------------------------------------
+! 1. Verify Phase 1 IKEv2 Security Associations
+show crypto ikev2 sa
+
+! 2. Verify Phase 2 IPSec Security Associations and Encrypted/Decrypted Packet Counters
+show crypto ipsec sa
+
+! 3. Verify Tunnel Interface Status
+show interface Tunnel0
+
+! 4. Test Connectivity through Tunnel
+ping 10.0.10.15 source 10.10.10.1
+================================================================================
